@@ -1,47 +1,1735 @@
-// Para cada equipamento:
-equipamentos.forEach(equipamento => {
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    // Ordenar os registros pela data e hora
-    equipamento.registros.sort((a, b) => {
-        return new Date(a.dataHora) - new Date(b.dataHora);
-    });
+    <title>Auditoria de Horímetros</title>
 
-    for (let i = 1; i < equipamento.registros.length; i++) {
+    <!-- Biblioteca para leitura de Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-        const anterior = equipamento.registros[i - 1];
-        const atual = equipamento.registros[i];
-
-        const fimAnterior = Number(anterior.horimetroFinal);
-        const inicioAtual = Number(atual.horimetroInicial);
-
-        // REGRA PRINCIPAL
-        if (inicioAtual !== fimAnterior) {
-
-            adicionarErro({
-                equipamento: atual.equipamento,
-                data: atual.data,
-                hora: atual.hora,
-                horimetroInformado: inicioAtual,
-                horimetroEsperado: fimAnterior,
-                diferenca: inicioAtual - fimAnterior,
-                motivo: "Horímetro inicial diferente do horímetro final do registro anterior"
-            });
+    <style>
+        * {
+            box-sizing: border-box;
         }
 
-        // REGRA 2: horímetro não pode diminuir dentro do próprio registro
-        const fimAtual = Number(atual.horimetroFinal);
-
-        if (fimAtual < inicioAtual) {
-
-            adicionarErro({
-                equipamento: atual.equipamento,
-                data: atual.data,
-                hora: atual.hora,
-                horimetroInformado: fimAtual,
-                horimetroEsperado: inicioAtual,
-                diferenca: fimAtual - inicioAtual,
-                motivo: "Horímetro final menor que o horímetro inicial"
-            });
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f8;
+            color: #222;
         }
+
+        header {
+            background: #1f2937;
+            color: white;
+            padding: 24px;
+        }
+
+        header h1 {
+            margin: 0 0 8px 0;
+            font-size: 26px;
+        }
+
+        header p {
+            margin: 0;
+            color: #d1d5db;
+        }
+
+        main {
+            max-width: 1500px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .upload-area {
+            border: 2px dashed #9ca3af;
+            border-radius: 12px;
+            padding: 35px;
+            text-align: center;
+            background: #fafafa;
+        }
+
+        .upload-area h2 {
+            margin-top: 0;
+        }
+
+        input[type="file"] {
+            margin-top: 15px;
+            padding: 10px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            padding: 11px 18px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-success {
+            background: #16a34a;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status.info {
+            display: block;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+
+        .status.success {
+            display: block;
+            background: #f0fdf4;
+            color: #166534;
+        }
+
+        .status.error {
+            display: block;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        .metric {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 18px;
+        }
+
+        .metric-title {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 25px;
+            font-weight: bold;
+        }
+
+        .error-number {
+            color: #dc2626;
+        }
+
+        .ok-number {
+            color: #16a34a;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1300px;
+        }
+
+        th {
+            background: #1f2937;
+            color: white;
+            padding: 11px;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            white-space: nowrap;
+        }
+
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        tr:hover {
+            background: #eff6ff;
+        }
+
+        .erro {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        .ok {
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 9px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .small {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        @media (max-width: 900px) {
+            .cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>Auditoria de Horímetros</h1>
+    <p>Verificação da continuidade dos horímetros por equipamento</p>
+</header>
+
+<main>
+
+    <div class="card">
+        <div class="upload-area">
+
+            <h2>Selecione a planilha Excel</h2>
+
+            <p>
+                O sistema irá ler todas as abas da planilha e verificar
+                automaticamente a continuidade dos horímetros.
+            </p>
+
+            <input
+                type="file"
+                id="arquivoExcel"
+                accept=".xlsx,.xls"
+            >
+
+            <div id="status" class="status"></div>
+
+        </div>
+    </div>
+
+
+    <div id="resultado" class="hidden">
+
+        <div class="card">
+
+            <h2>Resumo da análise</h2>
+
+            <div class="cards">
+
+                <div class="metric">
+                    <div class="metric-title">
+                        Registros analisados
+                    </div>
+
+                    <div
+                        id="totalRegistros"
+                        class="metric-value"
+                    >
+                        0
+                    </div>
+                </div>
+
+
+                <div class="metric">
+                    <div class="metric-title">
+                        Equipamentos
+                    </div>
+
+                    <div
+                        id="totalEquipamentos"
+                        class="metric-value"
+                    >
+                        0
+                    </div>
+                </div>
+
+
+                <div class="metric">
+                    <div class="metric-title">
+                        Correções necessárias
+                    </div>
+
+                    <div
+                        id="totalErros"
+                        class="metric-value error-number"
+                    >
+                        0
+                    </div>
+                </div>
+
+
+                <div class="metric">
+                    <div class="metric-title">
+                        Registros corretos
+                    </div>
+
+                    <div
+                        id="totalCorretos"
+                        class="metric-value ok-number"
+                    >
+                        0
+                    </div>
+                </div>
+
+            </div>
+
+            <div style="margin-top:15px;">
+                <button
+                    id="baixarCSV"
+                    class="btn-success"
+                    disabled
+                >
+                    Baixar relatório CSV
+                </button>
+
+                <button
+                    id="limpar"
+                    class="btn-secondary"
+                >
+                    Limpar
+                </button>
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>Correções necessárias</h2>
+
+            <p class="small">
+                Somente inconsistências encontradas são exibidas abaixo.
+            </p>
+
+            <div class="table-container">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>Equipamento</th>
+                            <th>Frota</th>
+                            <th>Data</th>
+                            <th>Hora</th>
+                            <th>Operador</th>
+                            <th>Horímetro Inicial Informado</th>
+                            <th>Horímetro Final Anterior</th>
+                            <th>Horímetro Inicial Esperado</th>
+                            <th>Diferença</th>
+                            <th>Horímetro Final Atual</th>
+                            <th>Status</th>
+                            <th>Motivo</th>
+                            <th>Registro Anterior</th>
+                            <th>Aba</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tabelaErros">
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div
+                id="semErros"
+                class="hidden"
+                style="padding:25px;text-align:center;"
+            >
+                <div class="ok">
+                    ✓ Nenhuma inconsistência de horímetro encontrada.
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>Resumo por aba</h2>
+
+            <div class="table-container">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>Aba</th>
+                            <th>Registros analisados</th>
+                            <th>Erros encontrados</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tabelaResumo">
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+
+<script>
+
+    /*
+    ============================================================
+    CONFIGURAÇÃO
+    ============================================================
+    */
+
+    const arquivoExcel = document.getElementById("arquivoExcel");
+    const status = document.getElementById("status");
+    const resultado = document.getElementById("resultado");
+
+    const tabelaErros = document.getElementById("tabelaErros");
+    const tabelaResumo = document.getElementById("tabelaResumo");
+
+    const semErros = document.getElementById("semErros");
+
+    const totalRegistros = document.getElementById("totalRegistros");
+    const totalEquipamentos = document.getElementById("totalEquipamentos");
+    const totalErros = document.getElementById("totalErros");
+    const totalCorretos = document.getElementById("totalCorretos");
+
+    const baixarCSV = document.getElementById("baixarCSV");
+    const limpar = document.getElementById("limpar");
+
+
+    let relatorioFinal = [];
+
+
+    /*
+    ============================================================
+    FUNÇÕES AUXILIARES
+    ============================================================
+    */
+
+    function mostrarStatus(mensagem, tipo) {
+
+        status.textContent = mensagem;
+
+        status.className = "status " + tipo;
     }
-});
+
+
+    function normalizarTexto(valor) {
+
+        if (valor === null || valor === undefined) {
+            return "";
+        }
+
+        return String(valor)
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+    }
+
+
+    function numero(valor) {
+
+        if (
+            valor === null ||
+            valor === undefined ||
+            valor === ""
+        ) {
+            return NaN;
+        }
+
+        if (typeof valor === "number") {
+            return valor;
+        }
+
+        let texto = String(valor).trim();
+
+        /*
+        Aceita:
+        5106.7
+        5106,7
+        */
+
+        texto = texto.replace(/\s/g, "");
+
+        if (
+            texto.includes(",") &&
+            texto.includes(".")
+        ) {
+
+            /*
+            Exemplo:
+            5.106,7
+            */
+
+            texto = texto
+                .replace(/\./g, "")
+                .replace(",", ".");
+
+        } else if (texto.includes(",")) {
+
+            texto = texto.replace(",", ".");
+        }
+
+        const resultado = Number(texto);
+
+        return resultado;
+    }
+
+
+    function formatarNumero(valor) {
+
+        if (
+            valor === null ||
+            valor === undefined ||
+            Number.isNaN(valor)
+        ) {
+            return "";
+        }
+
+        return Number(valor)
+            .toLocaleString("pt-BR", {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 3
+            });
+    }
+
+
+    function formatarData(valor) {
+
+        if (!valor) {
+            return "";
+        }
+
+        const data = new Date(valor);
+
+        if (Number.isNaN(data.getTime())) {
+            return String(valor);
+        }
+
+        return data.toLocaleDateString("pt-BR");
+    }
+
+
+    function obterDataHora(data, hora) {
+
+        if (!data) {
+            return null;
+        }
+
+        let dataTexto = String(data).trim();
+
+        let horaTexto = hora
+            ? String(hora).trim()
+            : "00:00:00";
+
+        /*
+        Se o Excel entregar uma data como número,
+        a biblioteca normalmente já converte com cellDates.
+        */
+
+        const dataObjeto = new Date(data);
+
+        if (!Number.isNaN(dataObjeto.getTime())) {
+
+            const ano = dataObjeto.getFullYear();
+            const mes = String(
+                dataObjeto.getMonth() + 1
+            ).padStart(2, "0");
+
+            const dia = String(
+                dataObjeto.getDate()
+            ).padStart(2, "0");
+
+            /*
+            Se a hora veio separada, usamos ela.
+            */
+
+            return new Date(
+                `${ano}-${mes}-${dia}T${horaTexto}`
+            );
+        }
+
+
+        /*
+        Tratamento para datas brasileiras:
+        DD/MM/YYYY
+        */
+
+        const partes = dataTexto.split("/");
+
+        if (partes.length === 3) {
+
+            const dia = partes[0];
+            const mes = partes[1];
+            const ano = partes[2];
+
+            return new Date(
+                `${ano}-${mes}-${dia}T${horaTexto}`
+            );
+        }
+
+
+        return new Date(
+            `${dataTexto}T${horaTexto}`
+        );
+    }
+
+
+    function encontrarColuna(objeto, possibilidades) {
+
+        const chaves = Object.keys(objeto);
+
+        for (const possibilidade of possibilidades) {
+
+            const procurada = normalizarTexto(possibilidade);
+
+            const encontrada = chaves.find(chave =>
+                normalizarTexto(chave) === procurada
+            );
+
+            if (encontrada) {
+                return encontrada;
+            }
+        }
+
+        /*
+        Também procura parcialmente.
+        */
+
+        for (const possibilidade of possibilidades) {
+
+            const procurada = normalizarTexto(possibilidade);
+
+            const encontrada = chaves.find(chave =>
+                normalizarTexto(chave).includes(procurada)
+            );
+
+            if (encontrada) {
+                return encontrada;
+            }
+        }
+
+        return null;
+    }
+
+
+    /*
+    ============================================================
+    PROCESSAMENTO DA PLANILHA
+    ============================================================
+    */
+
+    arquivoExcel.addEventListener(
+        "change",
+        async function(event) {
+
+            const arquivo = event.target.files[0];
+
+            if (!arquivo) {
+                return;
+            }
+
+            try {
+
+                mostrarStatus(
+                    "Lendo a planilha. Aguarde...",
+                    "info"
+                );
+
+                resultado.classList.add("hidden");
+
+                tabelaErros.innerHTML = "";
+                tabelaResumo.innerHTML = "";
+
+                relatorioFinal = [];
+
+                /*
+                Ler arquivo
+                */
+
+                const buffer =
+                    await arquivo.arrayBuffer();
+
+                const workbook =
+                    XLSX.read(buffer, {
+                        type: "array",
+                        cellDates: true
+                    });
+
+
+                console.log(
+                    "Abas encontradas:",
+                    workbook.SheetNames
+                );
+
+
+                let todosRegistros = [];
+
+                let resumoAbas = [];
+
+
+                /*
+                ====================================================
+                LER TODAS AS ABAS
+                ====================================================
+                */
+
+                for (
+                    const nomeAba
+                    of workbook.SheetNames
+                ) {
+
+                    /*
+                    Memorial e abas sem dados relevantes
+                    são ignorados.
+                    */
+
+                    const planilha =
+                        workbook.Sheets[nomeAba];
+
+                    const dados =
+                        XLSX.utils.sheet_to_json(
+                            planilha,
+                            {
+                                defval: ""
+                            }
+                        );
+
+
+                    if (!dados.length) {
+                        continue;
+                    }
+
+
+                    /*
+                    Procurar colunas
+                    */
+
+                    const primeiraLinha =
+                        dados[0];
+
+
+                    const colunaEquipamento =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Equipamento"
+                            ]
+                        );
+
+
+                    const colunaData =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Data Início",
+                                "Data Inicio",
+                                "Data"
+                            ]
+                        );
+
+
+                    const colunaHora =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Hora Início",
+                                "Hora Inicio",
+                                "Hora"
+                            ]
+                        );
+
+
+                    const colunaInicial =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Horímetro Inicial",
+                                "Horimetro Inicial"
+                            ]
+                        );
+
+
+                    const colunaFinal =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Horímetro Final",
+                                "Horimetro Final"
+                            ]
+                        );
+
+
+                    /*
+                    Se a aba não possui as colunas necessárias,
+                    simplesmente ignora.
+                    */
+
+                    if (
+                        !colunaEquipamento ||
+                        !colunaData ||
+                        !colunaInicial ||
+                        !colunaFinal
+                    ) {
+
+                        console.log(
+                            `Aba "${nomeAba}" ignorada: colunas necessárias não encontradas.`
+                        );
+
+                        continue;
+                    }
+
+
+                    const colunaFrota =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Frota"
+                            ]
+                        );
+
+
+                    const colunaOperador =
+                        encontrarColuna(
+                            primeiraLinha,
+                            [
+                                "Operador"
+                            ]
+                        );
+
+
+                    /*
+                    =================================================
+                    TRANSFORMAR OS REGISTROS
+                    =================================================
+                    */
+
+                    for (
+                        const linha
+                        of dados
+                    ) {
+
+                        const equipamento =
+                            String(
+                                linha[colunaEquipamento] ?? ""
+                            ).trim();
+
+
+                        if (!equipamento) {
+                            continue;
+                        }
+
+
+                        const data =
+                            linha[colunaData];
+
+
+                        if (!data) {
+                            continue;
+                        }
+
+
+                        const horimetroInicial =
+                            numero(
+                                linha[colunaInicial]
+                            );
+
+
+                        const horimetroFinal =
+                            numero(
+                                linha[colunaFinal]
+                            );
+
+
+                        /*
+                        Registros sem horímetro
+                        não podem ser comparados.
+                        */
+
+                        if (
+                            Number.isNaN(
+                                horimetroInicial
+                            ) ||
+                            Number.isNaN(
+                                horimetroFinal
+                            )
+                        ) {
+
+                            continue;
+                        }
+
+
+                        const hora =
+                            colunaHora
+                                ? linha[colunaHora]
+                                : "00:00:00";
+
+
+                        const dataHora =
+                            obterDataHora(
+                                data,
+                                hora
+                            );
+
+
+                        todosRegistros.push({
+
+                            aba: nomeAba,
+
+                            equipamento:
+
+                                equipamento,
+
+                            frota:
+
+                                colunaFrota
+                                    ? String(
+                                        linha[colunaFrota] ?? ""
+                                      ).trim()
+                                    : "",
+
+                            operador:
+
+                                colunaOperador
+                                    ? String(
+                                        linha[colunaOperador] ?? ""
+                                      ).trim()
+                                    : "",
+
+                            data:
+
+                                data,
+
+                            hora:
+
+                                hora,
+
+                            dataHora:
+
+                                dataHora,
+
+                            horimetroInicial:
+
+                                horimetroInicial,
+
+                            horimetroFinal:
+
+                                horimetroFinal
+                        });
+                    }
+                }
+
+
+                /*
+                ====================================================
+                QUANTIDADE DE REGISTROS
+                ====================================================
+                */
+
+                const quantidadeRegistros =
+                    todosRegistros.length;
+
+
+                /*
+                ====================================================
+                SEPARAR POR EQUIPAMENTO
+                ====================================================
+                */
+
+                const grupos =
+                    new Map();
+
+
+                for (
+                    const registro
+                    of todosRegistros
+                ) {
+
+                    const chave =
+                        normalizarTexto(
+                            registro.equipamento
+                        );
+
+
+                    if (!grupos.has(chave)) {
+
+                        grupos.set(
+                            chave,
+                            []
+                        );
+                    }
+
+
+                    grupos
+                        .get(chave)
+                        .push(registro);
+                }
+
+
+                /*
+                ====================================================
+                AUDITORIA
+                ====================================================
+                */
+
+                let quantidadeErros = 0;
+
+
+                for (
+                    const [chave, registros]
+                    of grupos
+                ) {
+
+                    /*
+                    Ordenar cronologicamente.
+                    */
+
+                    registros.sort(
+                        (a, b) => {
+
+                            const tempoA =
+                                a.dataHora
+                                    ? a.dataHora.getTime()
+                                    : 0;
+
+                            const tempoB =
+                                b.dataHora
+                                    ? b.dataHora.getTime()
+                                    : 0;
+
+                            return tempoA - tempoB;
+                        }
+                    );
+
+
+                    /*
+                    IMPORTANTE:
+
+                    O primeiro registro NÃO é comparado.
+
+                    A comparação começa no segundo registro.
+                    */
+
+                    for (
+                        let i = 1;
+                        i < registros.length;
+                        i++
+                    ) {
+
+                        const anterior =
+                            registros[i - 1];
+
+                        const atual =
+                            registros[i];
+
+
+                        /*
+                        ==========================================
+                        REGRA PRINCIPAL
+                        ==========================================
+
+                        Início atual deve ser igual
+                        ao fim anterior.
+                        */
+
+                        const diferencaContinuidade =
+                            atual.horimetroInicial -
+                            anterior.horimetroFinal;
+
+
+                        const continuidadeCorreta =
+                            Math.abs(
+                                diferencaContinuidade
+                            ) < 0.0001;
+
+
+                        /*
+                        ==========================================
+                        REGRA 2
+                        ==========================================
+
+                        Final não pode ser menor que inicial.
+                        */
+
+                        const finalMenorInicial =
+                            atual.horimetroFinal <
+                            atual.horimetroInicial -
+                            0.0001;
+
+
+                        /*
+                        ==========================================
+                        SE HOUVER ERRO
+                        ==========================================
+                        */
+
+                        if (
+                            !continuidadeCorreta ||
+                            finalMenorInicial
+                        ) {
+
+                            let motivos = [];
+
+
+                            if (
+                                !continuidadeCorreta
+                            ) {
+
+                                motivos.push(
+                                    "Horímetro inicial diferente do horímetro final do registro anterior"
+                                );
+                            }
+
+
+                            if (
+                                finalMenorInicial
+                            ) {
+
+                                motivos.push(
+                                    "Horímetro final menor que o inicial"
+                                );
+                            }
+
+
+                            relatorioFinal.push({
+
+                                equipamento:
+                                    atual.equipamento,
+
+                                frota:
+                                    atual.frota,
+
+                                data:
+                                    atual.data,
+
+                                hora:
+                                    atual.hora,
+
+                                operador:
+                                    atual.operador,
+
+                                inicialInformado:
+                                    atual.horimetroInicial,
+
+                                finalAnterior:
+                                    anterior.horimetroFinal,
+
+                                inicialEsperado:
+                                    anterior.horimetroFinal,
+
+                                diferenca:
+                                    diferencaContinuidade,
+
+                                finalAtual:
+                                    atual.horimetroFinal,
+
+                                status:
+                                    "CORREÇÃO NECESSÁRIA",
+
+                                motivo:
+                                    motivos.join(" + "),
+
+                                registroAnterior:
+                                    anterior.dataHora
+                                        ? anterior.dataHora.toLocaleString(
+                                            "pt-BR"
+                                          )
+                                        : "",
+
+                                aba:
+                                    atual.aba
+                            });
+
+                            quantidadeErros++;
+                        }
+                    }
+                }
+
+
+                /*
+                ====================================================
+                RESUMO POR ABA
+                ====================================================
+                */
+
+                const mapaResumo =
+                    new Map();
+
+
+                for (
+                    const registro
+                    of todosRegistros
+                ) {
+
+                    if (
+                        !mapaResumo.has(
+                            registro.aba
+                        )
+                    ) {
+
+                        mapaResumo.set(
+                            registro.aba,
+                            {
+                                registros: 0,
+                                erros: 0
+                            }
+                        );
+                    }
+
+
+                    mapaResumo
+                        .get(registro.aba)
+                        .registros++;
+                }
+
+
+                for (
+                    const erro
+                    of relatorioFinal
+                ) {
+
+                    if (
+                        mapaResumo.has(
+                            erro.aba
+                        )
+                    ) {
+
+                        mapaResumo
+                            .get(erro.aba)
+                            .erros++;
+                    }
+                }
+
+
+                /*
+                ====================================================
+                PREENCHER RESUMO
+                ====================================================
+                */
+
+                totalRegistros.textContent =
+                    quantidadeRegistros
+                        .toLocaleString("pt-BR");
+
+
+                totalEquipamentos.textContent =
+                    grupos.size
+                        .toLocaleString("pt-BR");
+
+
+                totalErros.textContent =
+                    quantidadeErros
+                        .toLocaleString("pt-BR");
+
+
+                totalCorretos.textContent =
+                    Math.max(
+                        0,
+                        quantidadeRegistros -
+                        quantidadeErros
+                    )
+                    .toLocaleString("pt-BR");
+
+
+                /*
+                ====================================================
+                TABELA DE ERROS
+                ====================================================
+                */
+
+                tabelaErros.innerHTML = "";
+
+
+                if (
+                    relatorioFinal.length === 0
+                ) {
+
+                    semErros.classList.remove(
+                        "hidden"
+                    );
+
+                } else {
+
+                    semErros.classList.add(
+                        "hidden"
+                    );
+
+
+                    for (
+                        const erro
+                        of relatorioFinal
+                    ) {
+
+                        const tr =
+                            document.createElement(
+                                "tr"
+                            );
+
+
+                        tr.innerHTML = `
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.equipamento
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.frota
+                                )}
+                            </td>
+
+                            <td>
+                                ${formatarData(
+                                    erro.data
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    String(erro.hora)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.operador
+                                )}
+                            </td>
+
+                            <td>
+                                ${formatarNumero(
+                                    erro.inicialInformado
+                                )}
+                            </td>
+
+                            <td>
+                                ${formatarNumero(
+                                    erro.finalAnterior
+                                )}
+                            </td>
+
+                            <td class="erro">
+                                ${formatarNumero(
+                                    erro.inicialEsperado
+                                )}
+                            </td>
+
+                            <td class="erro">
+                                ${formatarNumero(
+                                    erro.diferenca
+                                )}
+                            </td>
+
+                            <td>
+                                ${formatarNumero(
+                                    erro.finalAtual
+                                )}
+                            </td>
+
+                            <td>
+                                <span class="badge badge-error">
+                                    CORRIGIR
+                                </span>
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.motivo
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.registroAnterior
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHTML(
+                                    erro.aba
+                                )}
+                            </td>
+
+                        `;
+
+
+                        tabelaErros.appendChild(
+                            tr
+                        );
+                    }
+                }
+
+
+                /*
+                ====================================================
+                TABELA RESUMO
+                ====================================================
+                */
+
+                tabelaResumo.innerHTML = "";
+
+
+                for (
+                    const [aba, info]
+                    of mapaResumo
+                ) {
+
+                    const tr =
+                        document.createElement(
+                            "tr"
+                        );
+
+
+                    tr.innerHTML = `
+
+                        <td>
+                            ${escapeHTML(aba)}
+                        </td>
+
+                        <td>
+                            ${info.registros.toLocaleString(
+                                "pt-BR"
+                            )}
+                        </td>
+
+                        <td class="${
+                            info.erros > 0
+                                ? "erro"
+                                : "ok"
+                        }">
+                            ${info.erros.toLocaleString(
+                                "pt-BR"
+                            )}
+                        </td>
+
+                    `;
+
+
+                    tabelaResumo.appendChild(
+                        tr
+                    );
+                }
+
+
+                /*
+                ====================================================
+                FINALIZAÇÃO
+                ====================================================
+                */
+
+                resultado.classList.remove(
+                    "hidden"
+                );
+
+
+                baixarCSV.disabled =
+                    relatorioFinal.length === 0;
+
+
+                if (
+                    relatorioFinal.length === 0
+                ) {
+
+                    mostrarStatus(
+                        "Planilha analisada. Nenhuma inconsistência de horímetro foi encontrada.",
+                        "success"
+                    );
+
+                } else {
+
+                    mostrarStatus(
+                        `Planilha analisada. ${relatorioFinal.length} correção(ões) de horímetro encontrada(s).`,
+                        "error"
+                    );
+                }
+
+            } catch (erro) {
+
+                console.error(
+                    erro
+                );
+
+
+                mostrarStatus(
+                    "Erro ao ler a planilha: " +
+                    erro.message,
+                    "error"
+                );
+            }
+        }
+    );
+
+
+    /*
+    ============================================================
+    PROTEÇÃO CONTRA HTML INJETADO
+    ============================================================
+    */
+
+    function escapeHTML(valor) {
+
+        return String(
+            valor ?? ""
+        )
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+    }
+
+
+    /*
+    ============================================================
+    BAIXAR CSV
+    ============================================================
+    */
+
+    baixarCSV.addEventListener(
+        "click",
+        function() {
+
+            if (
+                !relatorioFinal.length
+            ) {
+                return;
+            }
+
+
+            const dados =
+                relatorioFinal.map(
+                    erro => ({
+
+                        "Equipamento":
+                            erro.equipamento,
+
+                        "Frota":
+                            erro.frota,
+
+                        "Data":
+                            formatarData(
+                                erro.data
+                            ),
+
+                        "Hora":
+                            erro.hora,
+
+                        "Operador":
+                            erro.operador,
+
+                        "Horímetro Inicial Informado":
+                            erro.inicialInformado,
+
+                        "Horímetro Final Anterior":
+                            erro.finalAnterior,
+
+                        "Horímetro Inicial Esperado":
+                            erro.inicialEsperado,
+
+                        "Diferença":
+                            erro.diferenca,
+
+                        "Horímetro Final Atual":
+                            erro.finalAtual,
+
+                        "Status":
+                            erro.status,
+
+                        "Motivo":
+                            erro.motivo,
+
+                        "Registro Anterior":
+                            erro.registroAnterior,
+
+                        "Aba":
+                            erro.aba
+                    })
+                );
+
+
+            const ws =
+                XLSX.utils.json_to_sheet(
+                    dados
+                );
+
+
+            const csv =
+                XLSX.utils.sheet_to_csv(
+                    ws,
+                    {
+                        FS: ";"
+                    }
+                );
+
+
+            /*
+            BOM para o Excel reconhecer
+            acentos corretamente.
+            */
+
+            const blob =
+                new Blob(
+                    [
+                        "\uFEFF" + csv
+                    ],
+                    {
+                        type:
+                            "text/csv;charset=utf-8;"
+                    }
+                );
+
+
+            const url =
+                URL.createObjectURL(
+                    blob
+                );
+
+
+            const link =
+                document.createElement(
+                    "a"
+                );
+
+
+            link.href = url;
+
+            link.download =
+                "relatorio_correcoes_horimetros.csv";
+
+
+            document.body.appendChild(
+                link
+            );
+
+            link.click();
+
+            document.body.removeChild(
+                link
+            );
+
+            URL.revokeObjectURL(
+                url
+            );
+        }
+    );
+
+
+    /*
+    ============================================================
+    LIMPAR
+    ============================================================
+    */
+
+    limpar.addEventListener(
+        "click",
+        function() {
+
+            arquivoExcel.value = "";
+
+            resultado.classList.add(
+                "hidden"
+            );
+
+            tabelaErros.innerHTML = "";
+
+            tabelaResumo.innerHTML = "";
+
+            relatorioFinal = [];
+
+            baixarCSV.disabled = true;
+
+            status.className =
+                "status";
+
+            status.textContent = "";
+        }
+    );
+
+</script>
+
+</body>
+</html>
