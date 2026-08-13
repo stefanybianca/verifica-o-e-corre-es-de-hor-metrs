@@ -1,0 +1,47 @@
+// Para cada equipamento:
+equipamentos.forEach(equipamento => {
+
+    // Ordenar os registros pela data e hora
+    equipamento.registros.sort((a, b) => {
+        return new Date(a.dataHora) - new Date(b.dataHora);
+    });
+
+    for (let i = 1; i < equipamento.registros.length; i++) {
+
+        const anterior = equipamento.registros[i - 1];
+        const atual = equipamento.registros[i];
+
+        const fimAnterior = Number(anterior.horimetroFinal);
+        const inicioAtual = Number(atual.horimetroInicial);
+
+        // REGRA PRINCIPAL
+        if (inicioAtual !== fimAnterior) {
+
+            adicionarErro({
+                equipamento: atual.equipamento,
+                data: atual.data,
+                hora: atual.hora,
+                horimetroInformado: inicioAtual,
+                horimetroEsperado: fimAnterior,
+                diferenca: inicioAtual - fimAnterior,
+                motivo: "Horímetro inicial diferente do horímetro final do registro anterior"
+            });
+        }
+
+        // REGRA 2: horímetro não pode diminuir dentro do próprio registro
+        const fimAtual = Number(atual.horimetroFinal);
+
+        if (fimAtual < inicioAtual) {
+
+            adicionarErro({
+                equipamento: atual.equipamento,
+                data: atual.data,
+                hora: atual.hora,
+                horimetroInformado: fimAtual,
+                horimetroEsperado: inicioAtual,
+                diferenca: fimAtual - inicioAtual,
+                motivo: "Horímetro final menor que o horímetro inicial"
+            });
+        }
+    }
+});
